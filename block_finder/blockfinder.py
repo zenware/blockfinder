@@ -4,7 +4,6 @@
 # For the people of Smubworld!
 import os
 import time
-import optparse
 import sys
 import sqlite3
 import hashlib
@@ -13,6 +12,8 @@ import zipfile
 import re
 import bz2
 from math import log
+
+import click
 
 if sys.version_info[0] >= 3:
     from configparser import ConfigParser
@@ -1115,260 +1116,194 @@ def normalize_country_code(country_code):
     return country_code.upper()
 
 
-def main():
+@click.group(invoke_without_command=True)
+@click.option('-v', '--verbose', help='be verbose', is_flag=True)
+@click.option('-c', '--cache-dir', help='set cache directory',
+    type=click.Path(exists=True),
+    default=str(os.path.expanduser('~') + '/.blockfinder/'))
+@click.option('--user-agent', help='provide a User-Agent to be used when fetching delegation files',
+    default=("Mozilla/5.0 (Windows NT 6.1; rv:17.0) "
+             "Gecko/20100101 Firefox/17.0"))
+@click.option('-x', '--hack-the-internet', is_flag=True)
+def main(verbose, cache_dir, user_agent, hack_the_internet):
     """ Where the magic starts. """
-    usage = ("Usage: %prog [options]\n\n"
-             "Example: %prog -v -t mm")
-    parser = optparse.OptionParser(usage)
-    parser.add_option("-v", "--verbose", action="store_true",
-                      dest="verbose", help="be verbose", default=False)
-    parser.add_option("-c", "--cache-dir", action="store", dest="dir",
-                      help="set cache directory [default: %default]",
-                      default=str(os.path.expanduser('~')) + "/.blockfinder/")
-    parser.add_option("--user-agent", action="store", dest="ua",
-                      help=('provide a User-Agent which will be used when '
-                            'fetching delegation files [default: "%default"]'),
-                      default=("Mozilla/5.0 (Windows NT 6.1; rv:17.0) "
-                               "Gecko/20100101 Firefox/17.0"))
-    parser.add_option("-x", "--hack-the-internet", action="store_true",
-                      dest="hack_the_internet", help=optparse.SUPPRESS_HELP)
-    group = optparse.OptionGroup(
-        parser,
-        "Cache modes",
-        "Pick at most one of these modes to initialize or update "
-        "the local cache.  May not be combined with lookup modes.")
-    group.add_option(
-        "-m",
-        "--init-maxmind",
-        action="store_true",
-        dest="init_maxmind",
-        help="initialize or update MaxMind GeoIP database")
-    group.add_option(
-        "-g",
-        "--reload-maxmind",
-        action="store_true",
-        dest="reload_maxmind",
-        help=("update cache from existing MaxMind GeoIP database"))
-    group.add_option(
-        "-r",
-        "--import-maxmind",
-        action="store",
-        dest="import_maxmind",
-        metavar="FILE",
-        help=("import the specified MaxMind GeoIP database file into "
-              "the database cache using its file name as source "
-              "name"))
-    group.add_option("-i", "--init-rir",
-                     action="store_true", dest="init_del",
-                     help="initialize or update delegation information")
-    group.add_option(
-        "-d",
-        "--reload-rir",
-        action="store_true",
-        dest="reload_del",
-        help="use existing delegation files to update the database")
-    group.add_option(
-        "-l",
-        "--init-lir",
-        action="store_true",
-        dest="init_lir",
-        help=("initialize or update lir information; can take up to "
-              "5 minutes"))
-    group.add_option(
-        "-z",
-        "--reload-lir",
-        action="store_true",
-        dest="reload_lir",
-        help=("use existing lir files to update the database; can "
-              "take up to 5 minutes"))
-    group.add_option(
-        "-o",
-        "--download-cc",
-        action="store_true",
-        dest="download_cc",
-        help="download country codes file")
-    group.add_option(
-        "-e",
-        "--erase-cache",
-        action="store_true",
-        dest="erase_cache",
-        help="erase the local database cache")
-    group.add_option(
-        "-j",
-        "--init-asn-descriptions",
-        action="store_true",
-        dest="init_asn_descriptions",
-        help=("initialize or update asn description information"))
-    group.add_option(
-        "-k",
-        "--reload-asn-descriptions",
-        action="store_true",
-        dest="reload_asn_descriptions",
-        help=("Use existing asn descriptions to update database"))
-    group.add_option(
-        "-y",
-        "--init-asn-assignments",
-        action="store_true",
-        dest="init_asn_assignments",
-        help=("initialize or update asn assignment information"))
-    group.add_option(
-        "-u",
-        "--reload-asn-assignments",
-        action="store_true",
-        dest="reload_asn_assignments",
-        help=("Use existing asn assignments to update database"))
-    parser.add_option_group(group)
-    group = optparse.OptionGroup(
-        parser, "Lookup modes",
-        "Pick at most one of these modes to look up data in the "
-        "local cache.  May not be combined with cache modes.")
-    group.add_option(
-        "-4",
-        "--ipv4",
-        action="store",
-        dest="ipv4",
-        help=("look up country code and name for the specified IPv4 "
-              "address"))
-    group.add_option(
-        "-6",
-        "--ipv6",
-        action="store",
-        dest="ipv6",
-        help=("look up country code and name for the specified IPv6 "
-              "address"))
-    group.add_option(
-        "-a",
-        "--asn",
-        action="store",
-        dest="asn",
-        help="look up country code and name for the specified ASN")
-    group.add_option(
-        "-t",
-        "--code",
-        action="callback",
-        dest="cc",
-        callback=split_callback,
-        metavar="CC[:type]",
-        type="str",
-        help=("look up all allocations (or only those for number "
-              "type 'ipv4', 'ipv6', or 'asn' if provided) in the "
-              "delegation cache for the specified two-letter country "
-              "code"))
-    group.add_option(
-        "-n",
-        "--name",
-        action="callback",
-        dest="cn",
-        callback=split_callback,
-        metavar="CN[:type]",
-        type="str",
-        help=("look up all allocations (or only those for number "
-              "type 'ipv4', 'ipv6', or 'asn' if provided) in the "
-              "delegation cache for the specified full country "
-              "name"))
-    group.add_option(
-        "-p",
-        "--compare",
-        action="store",
-        dest="compare",
-        metavar="CC",
-        help=("compare assignments to the specified country code "
-              "with overlapping assignments in other data "
-              "sources; can take some time and produce some "
-              "long output"))
-    group.add_option(
-        "-w",
-        "--what-country",
-        action="store",
-        dest="what_cc",
-        help=("look up country name for specified country code"))
-    group.add_option(
-        "--lookup-org-by-ip",
-        "--lookup-org-by-ip",
-        action="store",
-        dest="lookup_org_by_ip",
-        help=("look up ASN and AS Description for an IP address"))
-    group.add_option(
-        "--lookup-org-by-range",
-        "--lookup-org-by-range",
-        action="store_true",
-        dest="lookup_org_by_range",
-        help=("look up announced networks in a range of addresses; "
-              "requires --range-start and --range-end to be set"))
-    group.add_option(
-        "--range-start",
-        "--range-start",
-        action="store",
-        dest="range_start",
-        help=("Specify the start of a range of addresses"))
-    group.add_option(
-        "--range-end", "--range-end",
-        action="store",
-        dest="range_end",
-        help=("Specify the end of a range of addresses"))
-    parser.add_option_group(group)
-    group = optparse.OptionGroup(parser, "Export modes")
-    group.add_option(
-        "--export-geoip",
-        "--export-geoip",
-        action="store_true",
-        dest="export",
-        help=("export the lookup database to GeoIPCountryWhois.csv and "
-              "v6.csv files in the format used to build the debian "
-              "package geoip-database"))
-    group.add_option(
-        "--geoip-v4-file",
-        "--geoip-v4-file",
-        action="store",
-        dest="geoip_v4_filename",
-        help=("The filename to write the IPv4 GeoIP dataset to"))
-    group.add_option(
-        "--geoip-v6-file",
-        "--geoip-v6-file",
-        action="store",
-        dest="geoip_v6_filename",
-        help=("The filename to write the IPv6 GeoIP dataset to"))
-    group.add_option(
-        "--geoip-asn-file",
-        "--geoip-asn-file",
-        action="store",
-        dest="geoip_asn_filename",
-        help=("The filename to write the IPv4 GeoIP ASNum dataset to"))
-    parser.add_option_group(group)
-
-    group = optparse.OptionGroup(parser, "Network modes")
-    (options, args) = parser.parse_args()
-    if options.hack_the_internet:
+    if hack_the_internet:
         print("all your bases are belong to us!")
         sys.exit(0)
-    options_dict = vars(options)
-    modes = 0
-    for mode in ["init_maxmind", "reload_maxmind", "import_maxmind",
-                 "init_del", "init_lir", "reload_del", "reload_lir",
-                 "download_cc", "erase_cache", "ipv4", "ipv6", "asn",
-                 "cc", "cn", "compare", "what_cc", "init_asn_descriptions",
-                 "reload_asn_descriptions", "init_asn_assignments",
-                 "reload_asn_assignments", "lookup_org_by_ip",
-                 "lookup_org_by_range", "export"]:
-        if mode in options_dict and options_dict.get(mode):
-            modes += 1
-    if modes > 1:
-        parser.error("only 1 cache or lookup mode allowed")
-    elif modes == 0:
-        parser.error("must provide 1 cache or lookup mode")
-    database_cache = DatabaseCache(options.dir, options.verbose)
-    if options.erase_cache:
-        database_cache.erase_database()
-        sys.exit(0)
+    database_cache = DatabaseCache(cache_dir, verbose)
     if not database_cache.connect_to_database():
         print("Could not connect to database.")
         print("You may need to erase it using -e and then reload it "
               "using -d/-z.  Exiting.")
         sys.exit(1)
     database_cache.set_db_version()
-    downloader_parser = DownloaderParser(options.dir, database_cache,
-                                         options.ua)
-    lookup = Lookup(options.dir, database_cache)
+    downloader_parser = DownloaderParser(cache_dir, database_cache, user_agent)
+
+    database_cache.commit_and_close_database()
+
+
+@main.command('cache',
+    help=("Pick at most one of these modes to initialize or update "
+          "the local cache.  May not be combined with lookup modes."))
+@click.option("-m","--init-maxmind",
+    is_flag=True,
+    help="initialize or update MaxMind GeoIP database")
+@click.option("-g","--reload-maxmind",
+    is_flag=True,
+    help=("update cache from existing MaxMind GeoIP database"))
+@click.option("-r","--import-maxmind",
+    metavar="FILE",
+    help=("import the specified MaxMind GeoIP database file into "
+            "the database cache using its file name as source "
+            "name"))
+@click.option("-i", "--init-rir",
+    is_flag=True,
+    help="initialize or update delegation information")
+@click.option("-d","--reload-rir",
+    is_flag=True,
+    help="use existing delegation files to update the database")
+@click.option("-l","--init-lir",
+    is_flag=True,
+    help=("initialize or update lir information; can take up to "
+            "5 minutes"))
+@click.option("-z","--reload-lir",
+    is_flag=True,
+    help=("use existing lir files to update the database; can "
+            "take up to 5 minutes"))
+@click.option("-o","--download-cc",
+    is_flag=True,
+    help="download country codes file")
+@click.option("-e","--erase-cache",
+    is_flag=True,
+    help="erase the local database cache")
+@click.option("-j","--init-asn-descriptions",
+    is_flag=True,
+    help=("initialize or update asn description information"))
+@click.option("-k","--reload-asn-descriptions",
+    is_flag=True,
+    help=("Use existing asn descriptions to update database"))
+@click.option("-y","--init-asn-assignments",
+    is_flag=True,
+    help=("initialize or update asn assignment information"))
+@click.option("-u", "--reload-asn-assignments",
+    is_flag=True,
+    help=("Use existing asn assignments to update database"))
+def cache_command(erase_cache):
+    # This command will contain everything needed to tamper with the various supported caches.
+    if erase_cache:
+        database_cache.erase_database()
+        sys.exit(0)
+
+    modes = 0
+    for mode in ["init_maxmind", "reload_maxmind", "import_maxmind",
+                 "init_del", "init_lir", "reload_del", "reload_lir",
+                 "download_cc", "erase_cache", "init_asn_descriptions",
+                 "reload_asn_descriptions", "init_asn_assignments",
+                 "reload_asn_assignments"]:
+        if mode in options_dict and options_dict.get(mode):
+            modes += 1
+    if modes > 1:
+        click.echo("only 1 cache or lookup mode allowed", err=True)
+    elif modes == 0:
+        click.echo("must provide 1 cache or lookup mode", err=True)
+
+    elif options.init_maxmind or options.reload_maxmind:
+        if options.init_maxmind:
+            print("Downloading Maxmind GeoIP files...")
+            downloader_parser.download_maxmind_files()
+        print("Importing Maxmind GeoIP files...")
+        downloader_parser.parse_maxmind_files()
+    elif options.import_maxmind:
+        print("Importing Maxmind GeoIP files...")
+        downloader_parser.import_maxmind_file(options.import_maxmind)
+    elif options.init_del or options.reload_del:
+        if options.init_del:
+            print("Downloading RIR files...")
+            downloader_parser.download_rir_files()
+            print("Verifying RIR files...")
+            downloader_parser.verify_rir_files()
+        print("Importing RIR files...")
+        downloader_parser.parse_rir_files()
+    elif options.init_lir or options.reload_lir:
+        if options.init_lir:
+            print("Downloading LIR delegation files...")
+            downloader_parser.download_lir_files()
+        print("Importing LIR files...")
+        downloader_parser.parse_lir_files()
+    elif options.download_cc:
+        print("Downloading country code file...")
+        downloader_parser.download_country_code_file()
+    elif options.init_asn_descriptions or options.reload_asn_descriptions:
+        if options.init_asn_descriptions:
+            print("Downloading ASN Descriptions...")
+            downloader_parser.download_asn_description_file()
+        print("Importing ASN Descriptions...")
+        downloader_parser.parse_asn_description_file()
+    elif options.init_asn_assignments or options.reload_asn_assignments:
+        if options.init_asn_assignments:
+            print("Downloading ASN Assignments...")
+            downloader_parser.download_asn_assignment_files()
+        print("Importing ASN Assignments...")
+        downloader_parser.parse_asn_assignment_files()
+
+
+@main.command('lookup',
+    help=("Pick at most one of these modes to look up data in the "
+          "local cache.  May not be combined with cache modes."))
+@click.option("-4", "--ipv4",
+    help=("look up country code and name for the specified IPv4 "
+            "address"))
+@click.option("-6", "--ipv6",
+    help=("look up country code and name for the specified IPv6 "
+            "address"))
+@click.option("-a","--asn",
+    help="look up country code and name for the specified ASN")
+@click.option('cc', "-t", "--code",
+    callback=split_callback,
+    metavar="CC[:type]",
+    help=("look up all allocations (or only those for number "
+            "type 'ipv4', 'ipv6', or 'asn' if provided) in the "
+            "delegation cache for the specified two-letter country "
+            "code"))
+@click.option('cn', "-n", "--name",
+    callback=split_callback,
+    metavar="CN[:type]",
+    help=("look up all allocations (or only those for number "
+            "type 'ipv4', 'ipv6', or 'asn' if provided) in the "
+            "delegation cache for the specified full country "
+            "name"))
+@click.option(
+    'compare', "-p", "--compare",
+    metavar="CC",
+    help=("compare assignments to the specified country code "
+            "with overlapping assignments in other data "
+            "sources; can take some time and produce some "
+            "long output"))
+@click.option('what_cc',"-w","--what-country",
+    help=("look up country name for specified country code"))
+@click.option("--lookup-org-by-ip",
+    help=("look up ASN and AS Description for an IP address"))
+@click.option("--lookup-org-by-range",
+    is_flag=True,
+    help=("look up announced networks in a range of addresses; "
+            "requires --range-start and --range-end to be set"))
+@click.option("--range-start",
+    help=("Specify the start of a range of addresses"))
+@click.option("--range-end",
+    help=("Specify the end of a range of addresses"))
+def lookup_command():
+    # This command will contain everything needed to lookup things
+    modes = 0
+    for mode in ["ipv4", "ipv6", "asn", "cc", "cn", "compare",
+                 "what_cc", "lookup_org_by_ip", "lookup_org_by_range"]:
+        if mode in options_dict and options_dict.get(mode):
+            modes += 1
+    if modes > 1:
+        click.echo("only 1 cache or lookup mode allowed", err=True)
+    elif modes == 0:
+        click.echo("must provide 1 cache or lookup mode", err=True)
+
+    lookup = Lookup(cache_dir, database_cache)
     if options.ipv4 or options.ipv6 or options.asn or options.cc \
             or options.cn or options.compare:
         if downloader_parser.check_rir_file_mtimes():
@@ -1422,58 +1357,31 @@ def main():
         print("Comparing assignments with overlapping assignments in other "
               "data sources...")
         lookup.lookup_countries_in_different_source(options.compare)
-    elif options.init_maxmind or options.reload_maxmind:
-        if options.init_maxmind:
-            print("Downloading Maxmind GeoIP files...")
-            downloader_parser.download_maxmind_files()
-        print("Importing Maxmind GeoIP files...")
-        downloader_parser.parse_maxmind_files()
-    elif options.import_maxmind:
-        print("Importing Maxmind GeoIP files...")
-        downloader_parser.import_maxmind_file(options.import_maxmind)
-    elif options.init_del or options.reload_del:
-        if options.init_del:
-            print("Downloading RIR files...")
-            downloader_parser.download_rir_files()
-            print("Verifying RIR files...")
-            downloader_parser.verify_rir_files()
-        print("Importing RIR files...")
-        downloader_parser.parse_rir_files()
-    elif options.init_lir or options.reload_lir:
-        if options.init_lir:
-            print("Downloading LIR delegation files...")
-            downloader_parser.download_lir_files()
-        print("Importing LIR files...")
-        downloader_parser.parse_lir_files()
-    elif options.download_cc:
-        print("Downloading country code file...")
-        downloader_parser.download_country_code_file()
-    elif options.init_asn_descriptions or options.reload_asn_descriptions:
-        if options.init_asn_descriptions:
-            print("Downloading ASN Descriptions...")
-            downloader_parser.download_asn_description_file()
-        print("Importing ASN Descriptions...")
-        downloader_parser.parse_asn_description_file()
-    elif options.init_asn_assignments or options.reload_asn_assignments:
-        if options.init_asn_assignments:
-            print("Downloading ASN Assignments...")
-            downloader_parser.download_asn_assignment_files()
-        print("Importing ASN Assignments...")
-        downloader_parser.parse_asn_assignment_files()
-    elif options.export:
-        v4_file = options.geoip_v4_filename or "GeoIPCountryWhois.csv"
-        v6_file = options.geoip_v6_filename or "v6.csv"
-        asn_file = options.geoip_asn_filename or "GeoIPASNum.csv"
-        print("Exporting GeoIP IPv4 to %s" % v4_file)
-        database_cache.export_geoip(lookup, v4_file, 'ipv4')
-        print("Exporting GeoIP IPv6 to %s" % v6_file)
-        database_cache.export_geoip(lookup, v6_file, 'ipv6')
-        print("Exporting GeoIP IPv4 ASNum to %s" % asn_file)
-        database_cache.export_asn(asn_file, 'ipv4')
-        # XXX: Unsupported
-        # print("Exporting GeoIP IPv6 ASNum to %s" % asn_file)
-        # database_cache.export_geoip(asn_file, 'ipv6')
-    database_cache.commit_and_close_database()
+
+@main.command('export',
+    help=("export the lookup database to GeoIPCountryWhois.csv and "
+          "v6.csv files in the format used to build the debian "
+          "package geoip-database"))
+@click.option("--geoip-v4-file",
+    help=("The filename to write the IPv4 GeoIP dataset to"))
+@click.option("--geoip-v6-file",
+    help=("The filename to write the IPv6 GeoIP dataset to"))
+@click.option("--geoip-asn-file",
+    help=("The filename to write the IPv4 GeoIP ASNum dataset to"))
+def export_command(geoip_v4_file, geoip_v6_file, geoip_asn_file):
+    v4_file = geoip_v4_filename or "GeoIPCountryWhois.csv"
+    v6_file = geoip_v6_filename or "v6.csv"
+    asn_file = geoip_asn_filename or "GeoIPASNum.csv"
+    click.echo("Exporting GeoIP IPv4 to %s" % v4_file)
+    database_cache.export_geoip(lookup, v4_file, 'ipv4')
+    click.echo("Exporting GeoIP IPv6 to %s" % v6_file)
+    database_cache.export_geoip(lookup, v6_file, 'ipv6')
+    click.echo("Exporting GeoIP IPv4 ASNum to %s" % asn_file)
+    database_cache.export_asn(asn_file, 'ipv4')
+    # XXX: Unsupported
+    # print("Exporting GeoIP IPv6 ASNum to %s" % asn_file)
+    # database_cache.export_geoip(asn_file, 'ipv6')
+
 
 if __name__ == "__main__":
     main()
