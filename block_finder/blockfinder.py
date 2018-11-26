@@ -1126,11 +1126,15 @@ def normalize_country_code(country_code):
 
 
 @click.group(invoke_without_command=True)
-@click.option('-v', '--verbose', help='be verbose', is_flag=True)
-@click.option('-c', '--cache-dir', help='set cache directory',
+@click.option(
+    '-v', '--verbose', help='be verbose', is_flag=True)
+@click.option(
+    '-c', '--cache-dir', help='set cache directory',
     type=click.Path(exists=True),
     default=str(os.path.expanduser('~') + '/.blockfinder/'))
-@click.option('--user-agent', help='provide a User-Agent to be used when fetching delegation files',
+@click.option(
+    '--user-agent',
+    help='provide a User-Agent to be used when fetching delegation files',
     default=("Mozilla/5.0 (Windows NT 6.1; rv:17.0) "
              "Gecko/20100101 Firefox/17.0"))
 @click.pass_context
@@ -1145,64 +1149,78 @@ def main(ctx, verbose, cache_dir, user_agent):
               "using -d/-z.  Exiting.")
         sys.exit(1)
     ctx.obj["database_cache"].set_db_version()
-    ctx.obj["downloader_parser"] = DownloaderParser(cache_dir, ctx.obj["database_cache"], user_agent)
+    ctx.obj["downloader_parser"] = DownloaderParser(
+        cache_dir, ctx.obj["database_cache"], user_agent)
     ctx.obj["lookup"] = Lookup(cache_dir, database_cache)
-    #ctx.obj["database_cache"].commit_and_close_database()
 
 
-@main.command('cache',
+@main.command(
+    'cache',
     help=("Pick at most one of these modes to initialize or update "
           "the local cache.  May not be combined with lookup modes."))
-@click.option("-m","--init-maxmind",
+@click.option(
+    "-m", "--init-maxmind",
     is_flag=True,
     help="initialize or update MaxMind GeoIP database")
-@click.option("-g","--reload-maxmind",
+@click.option(
+    "-g", "--reload-maxmind",
     is_flag=True,
     help=("update cache from existing MaxMind GeoIP database"))
-@click.option("-r","--import-maxmind",
+@click.option(
+    "-r", "--import-maxmind",
     metavar="FILE",
     help=("import the specified MaxMind GeoIP database file into "
-            "the database cache using its file name as source "
-            "name"))
-@click.option("-i", "--init-rir",
+          "the database cache using its file name as source "
+          "name"))
+@click.option(
+    "-i", "--init-rir",
     is_flag=True,
     help="initialize or update delegation information")
-@click.option("-d","--reload-rir",
+@click.option(
+    "-d", "--reload-rir",
     is_flag=True,
     help="use existing delegation files to update the database")
-@click.option("-l","--init-lir",
+@click.option(
+    "-l", "--init-lir",
     is_flag=True,
     help=("initialize or update lir information; can take up to "
-            "5 minutes"))
-@click.option("-z","--reload-lir",
+          "5 minutes"))
+@click.option(
+    "-z", "--reload-lir",
     is_flag=True,
     help=("use existing lir files to update the database; can "
-            "take up to 5 minutes"))
-@click.option("-o","--download-cc",
+          "take up to 5 minutes"))
+@click.option(
+    "-o", "--download-cc",
     is_flag=True,
     help="download country codes file")
-@click.option("-e","--erase-cache",
+@click.option(
+    "-e", "--erase-cache",
     is_flag=True,
     help="erase the local database cache")
-@click.option("-j","--init-asn-descriptions",
+@click.option(
+    "-j", "--init-asn-descriptions",
     is_flag=True,
     help=("initialize or update asn description information"))
-@click.option("-k","--reload-asn-descriptions",
+@click.option(
+    "-k", "--reload-asn-descriptions",
     is_flag=True,
     help=("Use existing asn descriptions to update database"))
-@click.option("-y","--init-asn-assignments",
+@click.option(
+    "-y", "--init-asn-assignments",
     is_flag=True,
     help=("initialize or update asn assignment information"))
-@click.option("-u", "--reload-asn-assignments",
+@click.option(
+    "-u", "--reload-asn-assignments",
     is_flag=True,
     help=("Use existing asn assignments to update database"))
 @click.pass_context
 def cache_command(ctx,
-    init_maxmind, reload_maxmind, import_maxmind,
-    init_rir, reload_rir, init_lir, reload_lir,
-    download_cc, erase_cache, init_asn_descriptions,
-    reload_asn_descriptions, init_asn_assignments,
-    reload_asn_assignments):
+                  init_maxmind, reload_maxmind, import_maxmind,
+                  init_rir, reload_rir, init_lir, reload_lir,
+                  download_cc, erase_cache, init_asn_descriptions,
+                  reload_asn_descriptions, init_asn_assignments,
+                  reload_asn_assignments):
     if erase_cache:
         ctx.obj["database_cache"].erase_database()
         sys.exit(0)
@@ -1263,25 +1281,31 @@ def cache_reload_rir(ctx):
     ctx.obj["downloader_parser"].parse_rir_files()
 
 
-@main.command('lookup',
+@main.command(
+    'lookup',
     help=("Pick at most one of these modes to look up data in the "
           "local cache.  May not be combined with cache modes."))
-@click.option("-4", "--ipv4",
+@click.option(
+    "-4", "--ipv4",
     is_flag=True,
     help=("look up country code and name for the specified IPv4 "
-            "address"))
-@click.option("-6", "--ipv6",
+          "address"))
+@click.option(
+    "-6", "--ipv6",
     is_flag=True,
     help=("look up country code and name for the specified IPv6 "
-            "address"))
-@click.option("-a","--asn",
+          "address"))
+@click.option(
+    "-a", "--asn",
     help="look up country code and name for the specified ASN")
-@click.option('cc', "-t", "--code",
+@click.option(
+    'cc', "-t", "--code",
     callback=split_callback,
     metavar="CC:[]",
     help=("look up all allocations in the delegation "
           "cache for the specified two-letter country code"))
-@click.option('cn', "-n", "--name",
+@click.option(
+    'cn', "-n", "--name",
     callback=split_callback,
     metavar="CN:[]",
     help=("look up all allocations in the delegation "
@@ -1290,26 +1314,28 @@ def cache_reload_rir(ctx):
     'compare', "-p", "--compare",
     metavar="CC",
     help=("compare assignments to the specified country code "
-            "with overlapping assignments in other data "
-            "sources; can take some time and produce some "
-            "long output"))
-@click.option('what_cc',"-w","--what-country",
-    help=("look up country name for specified country code"))
+          "with overlapping assignments in other data "
+          "sources; can take some time and produce some "
+          "long output"))
+@click.option('what_cc', "-w", "--what-country",
+              help=("look up country name for specified country code"))
 @click.option("--lookup-org-by-ip",
-    help=("look up ASN and AS Description for an IP address"))
+              help=("look up ASN and AS Description for an IP address"))
 @click.option("--lookup-org-by-range",
-    is_flag=True,
-    help=("look up announced networks in a range of addresses; "
-            "requires --range-start and --range-end to be set"))
+              is_flag=True,
+              help=("look up announced networks in a range of addresses; "
+                    "requires --range-start and --range-end to be set"))
 @click.option("--range-start",
-    help=("Specify the start of a range of addresses"))
+              help=("Specify the start of a range of addresses"))
 @click.option("--range-end",
-    help=("Specify the end of a range of addresses"))
+              help=("Specify the end of a range of addresses"))
 @click.pass_context
-def lookup_command(ctx, ipv4, ipv6, asn, cc, cn, compare, what_cc, lookup_org_by_ip, lookup_org_by_range, range_start, range_end):
+def lookup_command(ctx, ipv4, ipv6,
+                   asn, cc, cn, compare, what_cc,
+                   lookup_org_by_ip, lookup_org_by_range,
+                   range_start, range_end):
     lookup = ctx.obj['lookup']
-    if ipv4 or ipv6 or asn or cc \
-            or cn or compare:
+    if ipv4 or ipv6 or asn or cc or cn or compare:
         if ctx.obj["downloader_parser"].check_rir_file_mtimes():
             print("Your cached RIR files are older than 24 hours; you "
                   "probably want to update them.")
@@ -1365,15 +1391,15 @@ def lookup_command(ctx, ipv4, ipv6, asn, cc, cn, compare, what_cc, lookup_org_by
 
 
 @main.command('export',
-    help=("export the lookup database to GeoIPCountryWhois.csv and "
-          "v6.csv files in the format used to build the debian "
-          "package geoip-database"))
+              help=("export the lookup database to GeoIPCountryWhois.csv and "
+                    "v6.csv files in the format used to build the debian "
+                    "package geoip-database"))
 @click.option("--geoip-v4-file",
-    help=("The filename to write the IPv4 GeoIP dataset to"))
+              help=("The filename to write the IPv4 GeoIP dataset to"))
 @click.option("--geoip-v6-file",
-    help=("The filename to write the IPv6 GeoIP dataset to"))
+              help=("The filename to write the IPv6 GeoIP dataset to"))
 @click.option("--geoip-asn-file",
-    help=("The filename to write the IPv4 GeoIP ASNum dataset to"))
+              help="The filename to write the IPv4 GeoIP ASNum dataset to")
 @click.pass_context
 def export_command(ctx, geoip_v4_file, geoip_v6_file, geoip_asn_file):
     v4_file = geoip_v4_filename or "GeoIPCountryWhois.csv"
