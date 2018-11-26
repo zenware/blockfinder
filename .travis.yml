@@ -8,6 +8,7 @@ python:
   - "3.5"
 before_script:
   - pip install pep8==1.6.2
+  - pip install Click
 script:
   - python setup.py test
   - pep8 blockfinder block_finder/ setup.py
