@@ -714,10 +714,13 @@ class DownloaderParser(object):
                     start_num = int(ipaddr.IPv4Address(entry['start']))
                     end_num = start_num + int(entry['value']) - 1
                 elif num_type == 'ipv6':
-                    network_str = entry['start'] + '/' + entry['value']
-                    network_ipaddr = ipaddr.IPv6Network(network_str)
-                    start_num = int(network_ipaddr.network_address)
-                    end_num = int(network_ipaddr.broadcast_address)
+                    if "value" in entry:
+                        network_str = entry['start'] + '/' + entry['value']
+                        network_ipaddr = ipaddr.IPv6Network(network_str)
+                        start_num = int(network_ipaddr.network_address)
+                        end_num = int(network_ipaddr.broadcast_address)
+                    else:
+                        print("No value found in entry:" + str(entry))
                 self.database_cache.insert_assignment(
                     start_num,
                     end_num,
@@ -1100,11 +1103,17 @@ class Lookup(object):
                   (start_range, end_range))
 
 
-def split_callback(option, opt, value, parser):
-    split_value = value.split(':')
-    setattr(parser.values, option.dest, split_value[0])
-    if len(split_value) > 1 and split_value[1] != '':
-        setattr(parser.values, 'type_filter', split_value[1])
+def split_callback(ctx, param, value):
+    print(ctx)
+    print(dir(ctx))
+    print(param)
+    print(dir(param))
+    print(value)
+    if value is not None:
+        split_value = value.split(':')
+        if len(split_value) > 1 and split_value[1] != '':
+            ctx.params['type_filter'] = split_value[1]
+        return split_value[0]
 
 
 def normalize_country_code(country_code):
@@ -1124,22 +1133,21 @@ def normalize_country_code(country_code):
 @click.option('--user-agent', help='provide a User-Agent to be used when fetching delegation files',
     default=("Mozilla/5.0 (Windows NT 6.1; rv:17.0) "
              "Gecko/20100101 Firefox/17.0"))
-@click.option('-x', '--hack-the-internet', is_flag=True)
-def main(verbose, cache_dir, user_agent, hack_the_internet):
+@click.pass_context
+def main(ctx, verbose, cache_dir, user_agent):
     """ Where the magic starts. """
-    if hack_the_internet:
-        print("all your bases are belong to us!")
-        sys.exit(0)
+    ctx.ensure_object(dict)
     database_cache = DatabaseCache(cache_dir, verbose)
-    if not database_cache.connect_to_database():
+    ctx.obj["database_cache"] = database_cache
+    if not ctx.obj["database_cache"].connect_to_database():
         print("Could not connect to database.")
         print("You may need to erase it using -e and then reload it "
               "using -d/-z.  Exiting.")
         sys.exit(1)
-    database_cache.set_db_version()
-    downloader_parser = DownloaderParser(cache_dir, database_cache, user_agent)
-
-    database_cache.commit_and_close_database()
+    ctx.obj["database_cache"].set_db_version()
+    ctx.obj["downloader_parser"] = DownloaderParser(cache_dir, ctx.obj["database_cache"], user_agent)
+    ctx.obj["lookup"] = Lookup(cache_dir, database_cache)
+    #ctx.obj["database_cache"].commit_and_close_database()
 
 
 @main.command('cache',
@@ -1188,90 +1196,96 @@ def main(verbose, cache_dir, user_agent, hack_the_internet):
 @click.option("-u", "--reload-asn-assignments",
     is_flag=True,
     help=("Use existing asn assignments to update database"))
-def cache_command(erase_cache):
-    # This command will contain everything needed to tamper with the various supported caches.
+@click.pass_context
+def cache_command(ctx,
+    init_maxmind, reload_maxmind, import_maxmind,
+    init_rir, reload_rir, init_lir, reload_lir,
+    download_cc, erase_cache, init_asn_descriptions,
+    reload_asn_descriptions, init_asn_assignments,
+    reload_asn_assignments):
     if erase_cache:
-        database_cache.erase_database()
+        ctx.obj["database_cache"].erase_database()
         sys.exit(0)
-
-    modes = 0
-    for mode in ["init_maxmind", "reload_maxmind", "import_maxmind",
-                 "init_del", "init_lir", "reload_del", "reload_lir",
-                 "download_cc", "erase_cache", "init_asn_descriptions",
-                 "reload_asn_descriptions", "init_asn_assignments",
-                 "reload_asn_assignments"]:
-        if mode in options_dict and options_dict.get(mode):
-            modes += 1
-    if modes > 1:
-        click.echo("only 1 cache or lookup mode allowed", err=True)
-    elif modes == 0:
-        click.echo("must provide 1 cache or lookup mode", err=True)
-
-    elif options.init_maxmind or options.reload_maxmind:
-        if options.init_maxmind:
+    elif init_maxmind or reload_maxmind:
+        if init_maxmind:
             print("Downloading Maxmind GeoIP files...")
-            downloader_parser.download_maxmind_files()
+            ctx.obj["downloader_parser"].download_maxmind_files()
         print("Importing Maxmind GeoIP files...")
-        downloader_parser.parse_maxmind_files()
-    elif options.import_maxmind:
+        ctx.obj["downloader_parser"].parse_maxmind_files()
+    elif import_maxmind:
         print("Importing Maxmind GeoIP files...")
-        downloader_parser.import_maxmind_file(options.import_maxmind)
-    elif options.init_del or options.reload_del:
-        if options.init_del:
+        ctx.obj["downloader_parser"].import_maxmind_file(import_maxmind)
+    elif init_rir or reload_rir:
+        if init_rir:
             print("Downloading RIR files...")
-            downloader_parser.download_rir_files()
+            ctx.obj["downloader_parser"].download_rir_files()
             print("Verifying RIR files...")
-            downloader_parser.verify_rir_files()
+            ctx.obj["downloader_parser"].verify_rir_files()
         print("Importing RIR files...")
-        downloader_parser.parse_rir_files()
-    elif options.init_lir or options.reload_lir:
-        if options.init_lir:
+        ctx.obj["downloader_parser"].parse_rir_files()
+    elif init_lir or reload_lir:
+        if init_lir:
             print("Downloading LIR delegation files...")
-            downloader_parser.download_lir_files()
+            ctx.obj["downloader_parser"].download_lir_files()
         print("Importing LIR files...")
-        downloader_parser.parse_lir_files()
-    elif options.download_cc:
+        ctx.obj["downloader_parser"].parse_lir_files()
+    elif download_cc:
         print("Downloading country code file...")
-        downloader_parser.download_country_code_file()
-    elif options.init_asn_descriptions or options.reload_asn_descriptions:
-        if options.init_asn_descriptions:
+        ctx.obj["downloader_parser"].download_country_code_file()
+    elif init_asn_descriptions or reload_asn_descriptions:
+        if init_asn_descriptions:
             print("Downloading ASN Descriptions...")
-            downloader_parser.download_asn_description_file()
+            ctx.obj["downloader_parser"].download_asn_description_file()
         print("Importing ASN Descriptions...")
-        downloader_parser.parse_asn_description_file()
-    elif options.init_asn_assignments or options.reload_asn_assignments:
-        if options.init_asn_assignments:
+        ctx.obj["downloader_parser"].parse_asn_description_file()
+    elif init_asn_assignments or reload_asn_assignments:
+        if init_asn_assignments:
             print("Downloading ASN Assignments...")
-            downloader_parser.download_asn_assignment_files()
+            ctx.obj["downloader_parser"].download_asn_assignment_files()
         print("Importing ASN Assignments...")
-        downloader_parser.parse_asn_assignment_files()
+        ctx.obj["downloader_parser"].parse_asn_assignment_files()
+    ctx.obj["database_cache"].commit_and_close_database()
+
+
+@main.command('init_rir')
+@click.pass_context
+def cache_init_rir(ctx):
+    click.echo("Downloading RIR files...")
+    ctx.obj["downloader_parser"].download_rir_files()
+    click.echo("Verifying RIR files...")
+    ctx.obj["downloader_parser"].verify_rir_files()
+
+
+@main.command('reload_rir')
+@click.pass_context
+def cache_reload_rir(ctx):
+    click.echo("Importing RIR files...")
+    ctx.obj["downloader_parser"].parse_rir_files()
 
 
 @main.command('lookup',
     help=("Pick at most one of these modes to look up data in the "
           "local cache.  May not be combined with cache modes."))
 @click.option("-4", "--ipv4",
+    is_flag=True,
     help=("look up country code and name for the specified IPv4 "
             "address"))
 @click.option("-6", "--ipv6",
+    is_flag=True,
     help=("look up country code and name for the specified IPv6 "
             "address"))
 @click.option("-a","--asn",
     help="look up country code and name for the specified ASN")
 @click.option('cc', "-t", "--code",
     callback=split_callback,
-    metavar="CC[:type]",
-    help=("look up all allocations (or only those for number "
-            "type 'ipv4', 'ipv6', or 'asn' if provided) in the "
-            "delegation cache for the specified two-letter country "
-            "code"))
+    metavar="CC:[]",
+    help=("look up all allocations in the delegation "
+          "cache for the specified two-letter country code"))
 @click.option('cn', "-n", "--name",
     callback=split_callback,
-    metavar="CN[:type]",
-    help=("look up all allocations (or only those for number "
-            "type 'ipv4', 'ipv6', or 'asn' if provided) in the "
-            "delegation cache for the specified full country "
-            "name"))
+    metavar="CN:[]",
+    help=("look up all allocations in the delegation "
+          "cache for the specified full country name"))
 @click.option(
     'compare', "-p", "--compare",
     metavar="CC",
@@ -1291,72 +1305,64 @@ def cache_command(erase_cache):
     help=("Specify the start of a range of addresses"))
 @click.option("--range-end",
     help=("Specify the end of a range of addresses"))
-def lookup_command():
-    # This command will contain everything needed to lookup things
-    modes = 0
-    for mode in ["ipv4", "ipv6", "asn", "cc", "cn", "compare",
-                 "what_cc", "lookup_org_by_ip", "lookup_org_by_range"]:
-        if mode in options_dict and options_dict.get(mode):
-            modes += 1
-    if modes > 1:
-        click.echo("only 1 cache or lookup mode allowed", err=True)
-    elif modes == 0:
-        click.echo("must provide 1 cache or lookup mode", err=True)
-
-    lookup = Lookup(cache_dir, database_cache)
-    if options.ipv4 or options.ipv6 or options.asn or options.cc \
-            or options.cn or options.compare:
-        if downloader_parser.check_rir_file_mtimes():
+@click.pass_context
+def lookup_command(ctx, ipv4, ipv6, asn, cc, cn, compare, what_cc, lookup_org_by_ip, lookup_org_by_range, range_start, range_end):
+    lookup = ctx.obj['lookup']
+    if ipv4 or ipv6 or asn or cc \
+            or cn or compare:
+        if ctx.obj["downloader_parser"].check_rir_file_mtimes():
             print("Your cached RIR files are older than 24 hours; you "
                   "probably want to update them.")
-    if options.asn:
-        lookup.asn_lookup(options.asn)
-    elif options.lookup_org_by_ip:
-        lookup.lookup_org_by_ip(options.lookup_org_by_ip)
-    elif options.lookup_org_by_range:
-        if not (options.range_start and options.range_end):
+    if asn:
+        lookup.asn_lookup(asn)
+    elif lookup_org_by_ip:
+        lookup.lookup_org_by_ip(lookup_org_by_ip)
+    elif lookup_org_by_range:
+        if not (range_start and range_end):
             print("You must specify the start and end addresses; "
                   "see --range-start and --range-end")
         else:
-            lookup.lookup_org_by_range(options.range_start, options.range_end)
-    elif options.ipv4:
-        lookup.lookup_ip_address(options.ipv4)
-    elif options.ipv6:
-        lookup.lookup_ip_address(options.ipv6)
-    elif options.cc or options.cn or options.what_cc:
+            lookup.lookup_org_by_range(range_start, range_end)
+    elif ipv4:
+        lookup.lookup_ip_address(ipv4)
+    elif ipv6:
+        lookup.lookup_ip_address(ipv6)
+    elif cc or cn or what_cc:
         country = None
-        if options.cc:
-            country = options.cc.upper()
+        if cc:
+            country = cc.upper()
         elif not lookup.knows_country_names():
             print("Need to download country codes first before looking "
                   "up countries by name.")
-        elif options.what_cc:
-            country = options.what_cc.upper()
+        elif what_cc:
+            country = what_cc.upper()
             country_name = lookup.get_name_from_country_code(country)
             if country_name:
                 print(("Hmm...%s? That would be %s."
-                       % (options.what_cc, country_name)))
+                       % (what_cc, country_name)))
                 sys.exit(0)
             else:
                 print(("Hmm, %s? We're not sure either. Are you sure that's "
-                       "a country code?" % options.what_cc))
+                       "a country code?" % what_cc))
                 sys.exit(1)
         else:
-            country = lookup.get_country_code_from_name(options.cn)
+            country = lookup.get_country_code_from_name(cn)
             if not country:
                 print("It appears your search did not match a country.")
         if country:
             types = ["ipv4", "ipv6", "asn"]
             if hasattr(options, 'type_filter') and \
-                    options.type_filter.lower() in types:
-                types = [options.type_filter.lower()]
+                    type_filter.lower() in types:
+                types = [type_filter.lower()]
             for request in types:
                 print("\n".join(lookup.fetch_rir_blocks_by_country(
                     request, country)))
-    elif options.compare:
+    elif compare:
         print("Comparing assignments with overlapping assignments in other "
               "data sources...")
-        lookup.lookup_countries_in_different_source(options.compare)
+        lookup.lookup_countries_in_different_source(compare)
+    ctx.obj["database_cache"].commit_and_close_database()
+
 
 @main.command('export',
     help=("export the lookup database to GeoIPCountryWhois.csv and "
@@ -1368,20 +1374,22 @@ def lookup_command():
     help=("The filename to write the IPv6 GeoIP dataset to"))
 @click.option("--geoip-asn-file",
     help=("The filename to write the IPv4 GeoIP ASNum dataset to"))
-def export_command(geoip_v4_file, geoip_v6_file, geoip_asn_file):
+@click.pass_context
+def export_command(ctx, geoip_v4_file, geoip_v6_file, geoip_asn_file):
     v4_file = geoip_v4_filename or "GeoIPCountryWhois.csv"
     v6_file = geoip_v6_filename or "v6.csv"
     asn_file = geoip_asn_filename or "GeoIPASNum.csv"
     click.echo("Exporting GeoIP IPv4 to %s" % v4_file)
-    database_cache.export_geoip(lookup, v4_file, 'ipv4')
+    ctx.obj["database_cache"].export_geoip(lookup, v4_file, 'ipv4')
     click.echo("Exporting GeoIP IPv6 to %s" % v6_file)
-    database_cache.export_geoip(lookup, v6_file, 'ipv6')
+    ctx.obj["database_cache"].export_geoip(lookup, v6_file, 'ipv6')
     click.echo("Exporting GeoIP IPv4 ASNum to %s" % asn_file)
-    database_cache.export_asn(asn_file, 'ipv4')
+    ctx.obj["database_cache"].export_asn(asn_file, 'ipv4')
     # XXX: Unsupported
     # print("Exporting GeoIP IPv6 ASNum to %s" % asn_file)
     # database_cache.export_geoip(asn_file, 'ipv6')
+    ctx.obj["database_cache"].commit_and_close_database()
 
 
 if __name__ == "__main__":
-    main()
+    main(obj={})
