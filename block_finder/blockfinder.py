@@ -818,10 +818,10 @@ class DownloaderParser(object):
                 b = bz2.BZ2File(asn_assignment_path)
                 for line in b:
                     if line.startswith("*"):
-                        l = line.split()
-                        netblock, path = l[1], l[6:-1]
-                        nexthop, metric, locprf, weight = l[
-                            2], l[3], l[4], l[5]
+                        line_split = line.split()
+                        netblock, path = line_split[1], line_split[6:-1]
+                        nexthop, metric, locprf, weight = line_split[
+                            2], line_split[3], line_split[4], line_split[5]
 
                         network = ipaddr.IPNetwork(netblock)
                         # XXX add support for other sources too
