@@ -15,20 +15,11 @@ from math import log
 
 import click
 
-if sys.version_info[0] >= 3:
-    from configparser import ConfigParser
-    import ipaddress as ipaddr
-    from urllib.request import (urlopen, Request)
-    from urllib.error import URLError
-    long = int
-else:
-    from ConfigParser import SafeConfigParser as ConfigParser
-    from urllib2 import (urlopen, Request, URLError)
-    try:
-        from embedded_ipaddr import ipaddr
-        ipaddr.ip_address = ipaddr.IPAddress
-    except:
-        import ipaddress as ipaddr
+
+from configparser import ConfigParser
+import ipaddress as ipaddr
+from urllib.request import (urlopen, Request)
+from urllib.error import URLError
 
 is_win32 = (sys.platform == "win32")
 
@@ -99,10 +90,7 @@ class DatabaseCache(object):
         if file_obj is None:
             file_obj = self.__get_default_config_file_obj()
         config = ConfigParser()
-        if sys.version_info[0] >= 3:
-            config.read_file(file_obj)
-        else:
-            config.readfp(file_obj)
+        config.read_file(file_obj)
         file_obj.close()
         return config
 
@@ -244,7 +232,7 @@ class DatabaseCache(object):
         self.cursor.execute(sql, (num_type, country_code))
         result = []
         for row in self.cursor:
-            result.append((long(row[0], 16), long(row[1], 16) - 1))
+            result.append((int(row[0], 16), int(row[1], 16) - 1))
         return result
 
     def fetch_country_code(self, num_type, source_type, lookup_num):
@@ -256,9 +244,9 @@ class DatabaseCache(object):
                'AND source_type = ? AND start_hex <= ? '
                'AND next_start_hex > ?')
         if num_type == 'ipv6':
-            lookup_hex = '%033x' % long(lookup_num)
+            lookup_hex = '%033x' % int(lookup_num)
         else:
-            lookup_hex = '%09x' % long(lookup_num)
+            lookup_hex = '%09x' % int(lookup_num)
         self.cursor.execute(sql, (num_type, source_type, lookup_hex,
                                   lookup_hex))
         row = self.cursor.fetchone()
@@ -288,16 +276,16 @@ class DatabaseCache(object):
         self.cursor.execute(sql, (first_country_code, ))
         result = []
         for row in self.cursor:
-            result.append((str(row[0]), long(row[1], 16),
-                           long(row[2], 16) - 1, str(row[3]), long(row[4], 16),
-                           long(row[5], 16) - 1, str(row[6]), str(row[7])))
+            result.append((str(row[0]), int(row[1], 16),
+                           int(row[2], 16) - 1, str(row[3]), int(row[4], 16),
+                           int(row[5], 16) - 1, str(row[6]), str(row[7])))
         return result
 
     def fetch_org_by_ip_address(self, lookup_str, num_type):
         if num_type == 'ipv4':
-            lookup_hex = '%09x' % long(int(lookup_str))
+            lookup_hex = '%09x' % int(int(lookup_str))
         else:
-            lookup_hex = '%033x' % long(int(lookup_str))
+            lookup_hex = '%033x' % int(int(lookup_str))
         sql = ('SELECT asn_descriptions.as_num, asn_descriptions.description, '
                'asn_assignments.start_hex, asn_assignments.next_start_hex '
                'FROM asn_descriptions JOIN asn_assignments ON '
@@ -310,11 +298,11 @@ class DatabaseCache(object):
 
     def fetch_org_by_ip_range(self, lookup_start, lookup_end, num_type):
         if num_type == 'ipv4':
-            lookup_start_hex = '%09x' % long(int(lookup_start))
-            lookup_end_hex = '%09x' % long(int(lookup_end))
+            lookup_start_hex = '%09x' % int(int(lookup_start))
+            lookup_end_hex = '%09x' % int(int(lookup_end))
         else:
-            lookup_start_hex = '%033x' % long(int(lookup_start))
-            lookup_end_hex = '%033x' % long(int(lookup_end))
+            lookup_start_hex = '%033x' % int(int(lookup_start))
+            lookup_end_hex = '%033x' % int(int(lookup_end))
 
         sql = ('SELECT asn_descriptions.as_num, asn_descriptions.description, '
                'asn_assignments.start_hex, asn_assignments.next_start_hex '
@@ -332,7 +320,7 @@ class DatabaseCache(object):
         for row in records:
             try:
                 start_hex, next_start_hex, record = \
-                    long(row[0], 16), long(row[1], 16), str(row[2])
+                    int(row[0], 16), int(row[1], 16), str(row[2])
                 nb = bits - int(log(next_start_hex - start_hex, 2))
                 net = ipaddr.IPNetwork("%s/%d" %
                                        (ipaddr.IPAddress(start_hex), nb))
