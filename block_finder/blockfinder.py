@@ -1113,7 +1113,7 @@ def normalize_country_code(country_code):
     return country_code.upper()
 
 
-@click.group(invoke_without_command=True)
+@click.group()
 @click.option(
     '-v', '--verbose', help='be verbose', is_flag=True)
 @click.option(
