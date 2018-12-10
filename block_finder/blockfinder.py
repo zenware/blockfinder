@@ -1118,7 +1118,7 @@ def normalize_country_code(country_code):
     '-v', '--verbose', help='be verbose', is_flag=True)
 @click.option(
     '-c', '--cache-dir', help='set cache directory',
-    type=click.Path(exists=True),
+    type=click.Path(),
     default=str(os.path.expanduser('~') + '/.blockfinder/'))
 @click.option(
     '--user-agent',
