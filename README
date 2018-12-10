@@ -1,4 +1,4 @@
-blockfinder by Jacob Appelbaum <jacob@appelbaum.net>
+# blockfinder by Jacob Appelbaum <jacob@appelbaum.net>
 
 "All that Blockfinder does is allow you to identify, contact and potentially
 hack into every computer network in the world." - Rolling Stone, August 2010 [0]
@@ -25,17 +25,16 @@ blockfinder has two methods of operation:
 
 To use blockfinder, first create or update the cache:
 
-    blockfinder -i
+    ./blockfinder cache -i
 
 Once you have a proper cache, search for the desired resource in the country
 of your choice:
 
-    ./blockfinder -v -t mm
+    ./blockfinder lookup -t mm
 
 Additionally, to filter results for a specific protocol you can use a selector:
 
-    ./blockfinder -v -t mm:ipv4 
-
+    ./blockfinder lookup -t mm:ipv4 
 
 On Windows (in cmd, PowerShell and 4nt) one may find blockfinder.bat useful:
 

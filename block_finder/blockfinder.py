@@ -1092,17 +1092,13 @@ class Lookup(object):
 
 
 def split_callback(ctx, param, value):
-    print(ctx)
-    print(dir(ctx))
-    print(param)
-    print(dir(param))
-    print(value)
+    # types = ["ipv4", "ipv6", "asn"]
+    # type_filter - the new argument we inject is called this.
     if value is not None:
         split_value = value.split(':')
         if len(split_value) > 1 and split_value[1] != '':
             ctx.params['type_filter'] = split_value[1]
         return split_value[0]
-
 
 def normalize_country_code(country_code):
     """ Normalize country codes a bit by making capitalization consistent and
@@ -1284,7 +1280,7 @@ def cache_reload_rir(ctx):
     help=("look up country code and name for the specified IPv6 "
           "address"))
 @click.option(
-    "-a", "--asn",
+    "-a", "--asn",  
     help="look up country code and name for the specified ASN")
 @click.option(
     'cc', "-t", "--code",
@@ -1318,7 +1314,7 @@ def cache_reload_rir(ctx):
 @click.option("--range-end",
               help=("Specify the end of a range of addresses"))
 @click.pass_context
-def lookup_command(ctx, ipv4, ipv6,
+def lookup_command(ctx, ipv4, ipv6, type_filter,
                    asn, cc, cn, compare, what_cc,
                    lookup_org_by_ip, lookup_org_by_range,
                    range_start, range_end):
@@ -1365,8 +1361,7 @@ def lookup_command(ctx, ipv4, ipv6,
                 print("It appears your search did not match a country.")
         if country:
             types = ["ipv4", "ipv6", "asn"]
-            if hasattr(options, 'type_filter') and \
-                    type_filter.lower() in types:
+            if type_filter and type_filter.lower() in types:
                 types = [type_filter.lower()]
             for request in types:
                 print("\n".join(lookup.fetch_rir_blocks_by_country(
